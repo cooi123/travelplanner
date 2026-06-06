@@ -107,6 +107,7 @@ export default async function TimelinePage({ params }: Props) {
   if (!membership) notFound();
 
   const isOrganizer = membership.role === "organizer";
+  const canManageActivities = membership.role === "organizer" || membership.role === "activity_manager";
 
   const { data: allActivities } = await supabase
     .from("activities")
@@ -120,7 +121,7 @@ export default async function TimelinePage({ params }: Props) {
     .eq("trip_id", tripId)
     .order("starts_at", { nullsFirst: false });
 
-  const activities: ActivityRow[] = isOrganizer
+  const activities: ActivityRow[] = canManageActivities
     ? (allActivities ?? [])
     : (allActivities ?? []).filter((a) =>
         a.participants.some(
@@ -140,7 +141,7 @@ export default async function TimelinePage({ params }: Props) {
     `)
     .eq("trip_id", tripId);
 
-  const accommodations: AccomRow[] = isOrganizer
+  const accommodations: AccomRow[] = canManageActivities
     ? (allAccoms ?? [])
     : (allAccoms ?? []).filter((a) =>
         a.assignments.some((x: { member_id: string }) => x.member_id === membership.id)
@@ -158,7 +159,7 @@ export default async function TimelinePage({ params }: Props) {
     .eq("trip_id", tripId)
     .order("departure_time", { ascending: true, nullsFirst: false });
 
-  const flights: FlightRow[] = isOrganizer
+  const flights: FlightRow[] = canManageActivities
     ? (allFlights ?? [])
     : (allFlights ?? []).filter((f) =>
         f.assignments.some((a: { member_id: string }) => a.member_id === membership.id)
@@ -222,7 +223,7 @@ export default async function TimelinePage({ params }: Props) {
         </div>
         <div className="mb-6 mt-2">
           <h1 className="text-2xl font-bold">Timeline</h1>
-          {!isOrganizer && (
+          {!canManageActivities && (
             <p className="text-sm text-gray-400 mt-1">Showing your confirmed activities and assigned accommodation.</p>
           )}
         </div>
@@ -245,7 +246,7 @@ export default async function TimelinePage({ params }: Props) {
           <div className="text-center py-16 text-gray-400">
             <p className="text-lg">Nothing on your timeline yet.</p>
             <p className="text-sm mt-1">
-              {isOrganizer
+              {canManageActivities
                 ? "Add activities, accommodations, or flights to get started."
                 : "Express interest in activities and the organizer will confirm you."}
             </p>

@@ -25,6 +25,7 @@ export default async function FlightsPage({ params }: Props) {
   if (!membership) notFound();
 
   const isOrganizer = membership.role === "organizer";
+  const canManageActivities = membership.role === "organizer" || membership.role === "activity_manager";
 
   const { data: flights } = await supabase
     .from("flights")
@@ -81,7 +82,7 @@ export default async function FlightsPage({ params }: Props) {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           members={(members ?? []) as any}
           currentMemberId={membership.id}
-          isOrganizer={isOrganizer}
+          isOrganizer={canManageActivities}
         />
       </main>
     </>
