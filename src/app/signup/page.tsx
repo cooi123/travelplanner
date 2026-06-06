@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 
-export default function SignupPage() {
+function SignupForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const next = searchParams.get("next") ?? "/dashboard";
@@ -38,15 +38,12 @@ export default function SignupPage() {
       return;
     }
 
-    // If session exists immediately, email confirmation is disabled — go straight in.
-    // Otherwise a confirmation email was sent and we wait.
     if (data.session) {
       router.push(next);
       router.refresh();
     } else {
       setLoading(false);
       setError(null);
-      // Show a confirmation-needed message by setting a special state.
       setConfirmationSent(true);
     }
   }
@@ -138,5 +135,13 @@ export default function SignupPage() {
         </form>
       </Card>
     </div>
+  );
+}
+
+export default function SignupPage() {
+  return (
+    <Suspense>
+      <SignupForm />
+    </Suspense>
   );
 }
