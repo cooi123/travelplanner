@@ -42,6 +42,10 @@ export function MembersSection({ tripId, currentUserId, isOrganizer }: Props) {
   const [guestName, setGuestName] = useState("");
   const [guestEmail, setGuestEmail] = useState("");
   const [addingGuest, setAddingGuest] = useState(false);
+  const [editingGuest, setEditingGuest] = useState<AnyMember | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editEmail, setEditEmail] = useState("");
+  const [savingGuest, setSavingGuest] = useState(false);
 
   const fetchMembers = useCallback(async () => {
     const supabase = createClient();
@@ -121,6 +125,33 @@ export function MembersSection({ tripId, currentUserId, isOrganizer }: Props) {
     if (error) { toast.error(error.message); return; }
     setMembers((prev) => prev.filter((m) => m.id !== memberId));
     toast.success("Guest removed");
+  }
+
+  function openEditGuest(m: AnyMember) {
+    setEditingGuest(m);
+    setEditName(m.guest_name ?? "");
+    setEditEmail(m.guest_email ?? "");
+  }
+
+  async function saveEditGuest() {
+    if (!editingGuest || !editName.trim()) return;
+    setSavingGuest(true);
+    const supabase = createClient();
+    const { error } = await supabase
+      .from("trip_members")
+      .update({ guest_name: editName.trim(), guest_email: editEmail.trim() || null })
+      .eq("id", editingGuest.id);
+    if (error) { toast.error(error.message); setSavingGuest(false); return; }
+    setMembers((prev) =>
+      prev.map((m) =>
+        m.id === editingGuest.id
+          ? { ...m, guest_name: editName.trim(), guest_email: editEmail.trim() || null }
+          : m
+      )
+    );
+    setEditingGuest(null);
+    setSavingGuest(false);
+    toast.success("Guest updated");
   }
 
   if (loading) return <p className="text-gray-400 text-sm">Loading members…</p>;
@@ -241,13 +272,22 @@ export function MembersSection({ tripId, currentUserId, isOrganizer }: Props) {
                       pending
                     </Badge>
                     {isOrganizer && (
-                      <button
-                        onClick={() => removeGuest(m.id)}
-                        className="text-xs text-red-400 hover:text-red-600"
-                        title="Remove guest"
-                      >
-                        ✕
-                      </button>
+                      <>
+                        <button
+                          onClick={() => openEditGuest(m)}
+                          className="text-xs text-gray-400 hover:text-gray-600"
+                          title="Edit guest"
+                        >
+                          ✎
+                        </button>
+                        <button
+                          onClick={() => removeGuest(m.id)}
+                          className="text-xs text-red-400 hover:text-red-600"
+                          title="Remove guest"
+                        >
+                          ✕
+                        </button>
+                      </>
                     )}
                   </div>
                 </CardContent>
@@ -259,6 +299,43 @@ export function MembersSection({ tripId, currentUserId, isOrganizer }: Props) {
           </p>
         </div>
       )}
+
+      {/* Edit guest dialog */}
+      <Dialog open={!!editingGuest} onOpenChange={(open) => { if (!open) setEditingGuest(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Edit guest</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>Name *</Label>
+              <Input
+                placeholder="Alice Smith"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && saveEditGuest()}
+                autoFocus
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Email <span className="text-gray-400 font-normal">(optional — needed to auto-link their account)</span></Label>
+              <Input
+                type="email"
+                placeholder="alice@example.com"
+                value={editEmail}
+                onChange={(e) => setEditEmail(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && saveEditGuest()}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingGuest(null)}>Cancel</Button>
+            <Button onClick={saveEditGuest} disabled={!editName.trim() || savingGuest}>
+              {savingGuest ? "Saving…" : "Save"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Add guest dialog */}
       <Dialog open={showAddGuest} onOpenChange={setShowAddGuest}>
