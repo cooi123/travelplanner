@@ -1,0 +1,18 @@
+# Minimal Supabase project config used by the Supabase CLI.
+# Full reference: https://supabase.com/docs/guides/cli/config
+project_id = "travel-planner"
+
+[db]
+# Port for the local Postgres database (supabase start).
+port = 54322
+major_version = 17
+
+[auth]
+# Where the magic-link / OAuth flow returns to.
+site_url = "http://localhost:3000"
+additional_redirect_urls = ["http://localhost:3000/auth/callback"]
+
+[auth.email]
+enable_signup = true
+# Magic-link login — no password required.
+enable_confirmations = false
