@@ -13,6 +13,12 @@ import {
   memberName,
   memberInitials,
 } from "../activities/_client";
+import {
+  TransportModal,
+  transportMeta,
+  fmtTransportTime,
+  type TransportWithAssignments,
+} from "../transport/_client";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -58,6 +64,7 @@ type DateGroup = {
   activities: ActivityFull[];
   accomEvents: AccomEvent[];
   flights: FlightRow[];
+  transports: TransportWithAssignments[];
 };
 
 export interface TimelineClientProps {
@@ -65,6 +72,7 @@ export interface TimelineClientProps {
   sortedGroups: [string, DateGroup][];
   undated: ActivityFull[];
   undatedFlights: FlightRow[];
+  undatedTransports: TransportWithAssignments[];
   members: MemberWithProfile[];
   currentMemberId: string;
   isOrganizer: boolean;
@@ -84,16 +92,6 @@ function anyMemberInitials(m: AnyMember): string {
   return name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2);
 }
 
-function fmtTime(ts: string | null, tz?: string | null) {
-  if (!ts) return null;
-  return new Date(ts).toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    timeZone: tz ?? undefined,
-  });
-}
-
-// Returns true if two activities have overlapping time ranges.
 function timesOverlap(a: ActivityFull, b: ActivityFull): boolean {
   if (!a.starts_at || !b.starts_at) return false;
   const aStart = new Date(a.starts_at).getTime();
@@ -117,16 +115,18 @@ function buildSlots(activities: ActivityFull[]): ActivityFull[][] {
 }
 
 // ---------------------------------------------------------------------------
-// Sub-components
+// Activity card
 // ---------------------------------------------------------------------------
 
 function ActivityCard({
   a,
   compact = false,
+  canManage,
   onClick,
 }: {
   a: ActivityFull;
   compact?: boolean;
+  canManage: boolean;
   onClick: () => void;
 }) {
   const confirmed = a.participants.filter((p) => p.status === "confirmed");
@@ -154,7 +154,7 @@ function ActivityCard({
         </div>
         <div className="flex flex-col items-end gap-1 shrink-0">
           <Badge variant="outline" className="text-xs">{confirmed.length} going</Badge>
-          <span className="text-[10px] text-blue-400 font-medium">tap to edit</span>
+          {canManage && <span className="text-[10px] text-blue-400 font-medium">tap to edit</span>}
         </div>
       </div>
 
@@ -180,7 +180,19 @@ function ActivityCard({
   );
 }
 
+// ---------------------------------------------------------------------------
+// Flight card
+// ---------------------------------------------------------------------------
+
 function FlightCard({ f }: { f: FlightRow }) {
+  function fmtTime(ts: string | null, tz?: string | null) {
+    if (!ts) return null;
+    return new Date(ts).toLocaleTimeString("en-US", {
+      hour: "numeric", minute: "2-digit",
+      timeZone: tz ?? undefined,
+    });
+  }
+
   return (
     <div className="bg-white border rounded-lg px-4 py-3 shadow-sm hover:shadow-md transition-shadow">
       <div className="flex items-start justify-between gap-2">
@@ -236,26 +248,124 @@ function FlightCard({ f }: { f: FlightRow }) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Transport card
+// ---------------------------------------------------------------------------
+
+function TransportCard({
+  t,
+  canManage,
+  onClick,
+}: {
+  t: TransportWithAssignments;
+  canManage: boolean;
+  onClick: () => void;
+}) {
+  const meta = transportMeta(t.type);
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="w-full text-left bg-white border rounded-lg px-4 py-3 shadow-sm hover:shadow-md hover:border-orange-300 active:scale-[0.98] transition-all duration-150 cursor-pointer"
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span>{meta.icon}</span>
+            <span className="font-semibold text-gray-900">
+              {t.operator || meta.label}
+            </span>
+            {t.operator && (
+              <Badge variant="secondary" className="text-xs capitalize">{meta.label}</Badge>
+            )}
+          </div>
+
+          {(t.from_location || t.to_location) && (
+            <div className="flex items-center gap-1.5 mt-1">
+              {t.from_location && <span className="text-sm text-gray-600">{t.from_location}</span>}
+              {t.from_location && t.to_location && <span className="text-gray-300 text-xs">→</span>}
+              {t.to_location && <span className="text-sm text-gray-600">{t.to_location}</span>}
+            </div>
+          )}
+
+          <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5">
+            {t.departs_at && (
+              <p className="text-xs text-gray-400">
+                Dep: {fmtTransportTime(t.departs_at, t.departs_timezone)}
+              </p>
+            )}
+            {t.arrives_at && (
+              <p className="text-xs text-gray-400">
+                Arr: {fmtTransportTime(t.arrives_at, t.arrives_timezone)}
+              </p>
+            )}
+            {t.booking_ref && (
+              <p className="text-xs text-gray-400 font-mono">Ref: {t.booking_ref}</p>
+            )}
+          </div>
+        </div>
+
+        <div className="flex flex-col items-end gap-1 shrink-0">
+          <Badge variant="outline" className="text-xs text-orange-700 border-orange-200">
+            {t.assignments.length} on board
+          </Badge>
+          {canManage && <span className="text-[10px] text-orange-400 font-medium">tap to edit</span>}
+        </div>
+      </div>
+
+      {t.assignments.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-2 items-center">
+          <div className="flex -space-x-2">
+            {t.assignments.slice(0, 8).map((a) => a.member && (
+              <Avatar key={a.id} className="h-7 w-7 border-2 border-white">
+                <AvatarFallback className="text-xs bg-orange-100 text-orange-700">
+                  {anyMemberInitials(a.member as AnyMember)}
+                </AvatarFallback>
+              </Avatar>
+            ))}
+          </div>
+          <div className="flex flex-wrap gap-1">
+            {t.assignments.map((a) => a.member && (
+              <span key={a.id} className="text-xs text-gray-500">
+                {anyMemberName(a.member as AnyMember)},
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+    </button>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Activity slot wrappers
+// ---------------------------------------------------------------------------
+
 function SingleActivity({
   a,
+  canManage,
   onClick,
 }: {
   a: ActivityFull;
+  canManage: boolean;
   onClick: () => void;
 }) {
   return (
     <div className="relative">
       <div className="absolute -left-[29px] top-1 h-3.5 w-3.5 rounded-full bg-blue-500 border-2 border-white ring-2 ring-blue-500" />
-      <ActivityCard a={a} onClick={onClick} />
+      <ActivityCard a={a} canManage={canManage} onClick={onClick} />
     </div>
   );
 }
 
 function ParallelSlot({
   slot,
+  canManage,
   onActivityClick,
 }: {
   slot: ActivityFull[];
+  canManage: boolean;
   onActivityClick: (id: string) => void;
 }) {
   const cols = Math.min(slot.length, 3);
@@ -269,16 +379,13 @@ function ParallelSlot({
         </span>
         <div className="h-px flex-1 bg-gray-200" />
       </div>
-      <div
-        className="grid gap-3"
-        style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
-      >
+      <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
         {slot.map((a) => (
           <div key={a.id} className="flex flex-col">
             <div className="flex justify-center mb-1">
               <div className="w-px h-3 bg-gray-200" />
             </div>
-            <ActivityCard a={a} compact onClick={() => onActivityClick(a.id)} />
+            <ActivityCard a={a} compact canManage={canManage} onClick={() => onActivityClick(a.id)} />
           </div>
         ))}
       </div>
@@ -290,26 +397,28 @@ function ParallelSlot({
 }
 
 // ---------------------------------------------------------------------------
-// Main client component
+// Main client
 // ---------------------------------------------------------------------------
 
 export function TimelineClient({
-  tripId,
   sortedGroups,
   undated,
   undatedFlights,
+  undatedTransports,
   members,
   currentMemberId,
   canManageActivities,
 }: TimelineClientProps) {
   const router = useRouter();
-  const [editingId, setEditingId] = useState<string | null>(null);
 
-  const allActivities = [
-    ...sortedGroups.flatMap(([, g]) => g.activities),
-    ...undated,
-  ];
-  const editingActivity = allActivities.find((a) => a.id === editingId) ?? null;
+  const [editingActivityId, setEditingActivityId] = useState<string | null>(null);
+  const [editingTransportId, setEditingTransportId] = useState<string | null>(null);
+
+  const allActivities = [...sortedGroups.flatMap(([, g]) => g.activities), ...undated];
+  const allTransports = [...sortedGroups.flatMap(([, g]) => g.transports), ...undatedTransports];
+
+  const editingActivity = allActivities.find((a) => a.id === editingActivityId) ?? null;
+  const editingTransport = allTransports.find((t) => t.id === editingTransportId) ?? null;
 
   async function deleteActivity(id: string) {
     const supabase = createClient();
@@ -319,7 +428,19 @@ export function TimelineClient({
     router.refresh();
   }
 
-  const hasAnything = sortedGroups.length > 0 || undated.length > 0 || undatedFlights.length > 0;
+  async function deleteTransport(id: string) {
+    const supabase = createClient();
+    const { error } = await supabase.from("transports").delete().eq("id", id);
+    if (error) { toast.error(error.message); return; }
+    toast.success("Deleted");
+    router.refresh();
+  }
+
+  const hasAnything =
+    sortedGroups.length > 0 ||
+    undated.length > 0 ||
+    undatedFlights.length > 0 ||
+    undatedTransports.length > 0;
 
   return (
     <>
@@ -328,7 +449,7 @@ export function TimelineClient({
           <p className="text-lg">Nothing on your timeline yet.</p>
           <p className="text-sm mt-1">
             {canManageActivities
-              ? "Add activities, accommodations, or flights to get started."
+              ? "Add activities, accommodations, flights, or transport to get started."
               : "Express interest in activities and the organizer will confirm you."}
           </p>
         </div>
@@ -341,6 +462,7 @@ export function TimelineClient({
                 <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-widest mb-4">{date}</h2>
                 <div className="relative pl-6 border-l-2 border-gray-200 space-y-6">
 
+                  {/* Accommodation check-in / check-out */}
                   {group.accomEvents.map((e) => (
                     <div key={`${e.accom.id}-${e.type}`} className="relative">
                       <div className={`absolute -left-[29px] top-1 h-3.5 w-3.5 rounded-full border-2 border-white ring-2 ${
@@ -387,6 +509,7 @@ export function TimelineClient({
                     </div>
                   ))}
 
+                  {/* Flights */}
                   {group.flights.map((f) => (
                     <div key={f.id} className="relative">
                       <div className="absolute -left-[29px] top-1 h-3.5 w-3.5 rounded-full bg-sky-500 border-2 border-white ring-2 ring-sky-500" />
@@ -394,18 +517,33 @@ export function TimelineClient({
                     </div>
                   ))}
 
+                  {/* Transport */}
+                  {group.transports.map((t) => (
+                    <div key={t.id} className="relative">
+                      <div className="absolute -left-[29px] top-1 h-3.5 w-3.5 rounded-full bg-orange-500 border-2 border-white ring-2 ring-orange-500" />
+                      <TransportCard
+                        t={t}
+                        canManage={canManageActivities}
+                        onClick={() => setEditingTransportId(t.id)}
+                      />
+                    </div>
+                  ))}
+
+                  {/* Activity slots */}
                   {slots.map((slot, slotIdx) =>
                     slot.length === 1 ? (
                       <SingleActivity
                         key={slot[0].id}
                         a={slot[0]}
-                        onClick={() => setEditingId(slot[0].id)}
+                        canManage={canManageActivities}
+                        onClick={() => setEditingActivityId(slot[0].id)}
                       />
                     ) : (
                       <ParallelSlot
                         key={`slot-${slotIdx}`}
                         slot={slot}
-                        onActivityClick={setEditingId}
+                        canManage={canManageActivities}
+                        onActivityClick={setEditingActivityId}
                       />
                     )
                   )}
@@ -414,16 +552,25 @@ export function TimelineClient({
             );
           })}
 
-          {(undated.length > 0 || undatedFlights.length > 0) && (
+          {/* Undated items */}
+          {(undated.length > 0 || undatedFlights.length > 0 || undatedTransports.length > 0) && (
             <div>
               <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-widest mb-4">Date TBD</h2>
               <div className="space-y-3">
                 {undatedFlights.map((f) => <FlightCard key={f.id} f={f} />)}
+                {undatedTransports.map((t) => (
+                  <TransportCard
+                    key={t.id}
+                    t={t}
+                    canManage={canManageActivities}
+                    onClick={() => setEditingTransportId(t.id)}
+                  />
+                ))}
                 {undated.map((a) => (
                   <button
                     key={a.id}
                     type="button"
-                    onClick={() => setEditingId(a.id)}
+                    onClick={() => setEditingActivityId(a.id)}
                     className="w-full text-left bg-white border rounded-lg px-4 py-3 hover:shadow-md hover:border-blue-300 active:scale-[0.98] transition-all duration-150"
                   >
                     <p className="font-medium text-gray-700">{a.title}</p>
@@ -436,15 +583,28 @@ export function TimelineClient({
         </div>
       )}
 
+      {/* Activity edit modal */}
       {editingActivity && (
         <ActivityModal
           activity={editingActivity}
           members={members}
           currentMemberId={currentMemberId}
           isOrganizer={canManageActivities}
-          onClose={() => setEditingId(null)}
-          onSaved={() => { setEditingId(null); router.refresh(); }}
-          onDelete={(id) => { deleteActivity(id); setEditingId(null); }}
+          onClose={() => setEditingActivityId(null)}
+          onSaved={() => { setEditingActivityId(null); router.refresh(); }}
+          onDelete={(id) => { deleteActivity(id); setEditingActivityId(null); }}
+        />
+      )}
+
+      {/* Transport edit modal */}
+      {editingTransport && (
+        <TransportModal
+          transport={editingTransport}
+          members={members as Parameters<typeof TransportModal>[0]["members"]}
+          isOrganizer={canManageActivities}
+          onClose={() => setEditingTransportId(null)}
+          onSaved={() => { setEditingTransportId(null); router.refresh(); }}
+          onDelete={(id) => { deleteTransport(id); setEditingTransportId(null); }}
         />
       )}
     </>

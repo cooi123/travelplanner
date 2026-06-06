@@ -6,10 +6,13 @@ import { LinkButton } from "@/components/ui/link-button";
 import { Separator } from "@/components/ui/separator";
 import { TimelineClient } from "./_client";
 import type { ActivityFull, MemberWithProfile } from "../activities/_client";
+import type { TransportWithAssignments } from "../transport/_client";
 
 interface Props {
   params: Promise<{ tripId: string }>;
 }
+
+// Local row types matching what Supabase returns with nested selects.
 
 type AnyMember = {
   profile: { full_name: string | null; email: string | null } | null;
@@ -51,7 +54,17 @@ type DateGroup = {
   activities: ActivityFull[];
   accomEvents: AccomEvent[];
   flights: FlightRow[];
+  transports: TransportWithAssignments[];
 };
+
+const NAV = (tripId: string) => [
+  { label: "Members",       href: `/trips/${tripId}` },
+  { label: "Accommodation", href: `/trips/${tripId}/accommodations` },
+  { label: "Activities",    href: `/trips/${tripId}/activities` },
+  { label: "Flights",       href: `/trips/${tripId}/flights` },
+  { label: "Transport",     href: `/trips/${tripId}/transport` },
+  { label: "Timeline",      href: `/trips/${tripId}/timeline` },
+];
 
 export default async function TimelinePage({ params }: Props) {
   const { tripId } = await params;
@@ -70,18 +83,40 @@ export default async function TimelinePage({ params }: Props) {
   const isOrganizer = membership.role === "organizer";
   const canManageActivities = membership.role === "organizer" || membership.role === "activity_manager";
 
-  const { data: allActivities } = await supabase
-    .from("activities")
-    .select(`
-      *,
-      participants:activity_participants(
-        *,
-        member:trip_members(*, profile:profiles(*))
-      )
-    `)
-    .eq("trip_id", tripId)
-    .order("starts_at", { nullsFirst: false });
+  // Fetch all data in parallel
+  const [
+    { data: allActivities },
+    { data: allAccoms },
+    { data: allFlights },
+    { data: allTransports },
+    { data: membersData },
+  ] = await Promise.all([
+    supabase
+      .from("activities")
+      .select(`*, participants:activity_participants(*, member:trip_members(*, profile:profiles(*)))`)
+      .eq("trip_id", tripId)
+      .order("starts_at", { nullsFirst: false }),
+    supabase
+      .from("accommodations")
+      .select(`*, assignments:accommodation_assignments(*, member:trip_members(*, profile:profiles(*)))`)
+      .eq("trip_id", tripId),
+    supabase
+      .from("flights")
+      .select(`*, assignments:flight_assignments(*, member:trip_members(*, profile:profiles(*)))`)
+      .eq("trip_id", tripId)
+      .order("departure_time", { ascending: true, nullsFirst: false }),
+    supabase
+      .from("transports")
+      .select(`*, assignments:transport_assignments(*, member:trip_members(*, profile:profiles(*)))`)
+      .eq("trip_id", tripId)
+      .order("departs_at", { ascending: true, nullsFirst: false }),
+    supabase
+      .from("trip_members")
+      .select("*, profile:profiles(*)")
+      .eq("trip_id", tripId),
+  ]);
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const activities: ActivityFull[] = (canManageActivities
     ? (allActivities ?? [])
     : (allActivities ?? []).filter((a) =>
@@ -94,17 +129,7 @@ export default async function TimelinePage({ params }: Props) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ) as any[];
 
-  const { data: allAccoms } = await supabase
-    .from("accommodations")
-    .select(`
-      *,
-      assignments:accommodation_assignments(
-        *,
-        member:trip_members(*, profile:profiles(*))
-      )
-    `)
-    .eq("trip_id", tripId);
-
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const accommodations: AccomRow[] = (canManageActivities
     ? (allAccoms ?? [])
     : (allAccoms ?? []).filter((a) =>
@@ -114,18 +139,7 @@ export default async function TimelinePage({ params }: Props) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ) as any[];
 
-  const { data: allFlights } = await supabase
-    .from("flights")
-    .select(`
-      *,
-      assignments:flight_assignments(
-        *,
-        member:trip_members(*, profile:profiles(*))
-      )
-    `)
-    .eq("trip_id", tripId)
-    .order("departure_time", { ascending: true, nullsFirst: false });
-
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const flights: FlightRow[] = (canManageActivities
     ? (allFlights ?? [])
     : (allFlights ?? []).filter((f) =>
@@ -135,10 +149,15 @@ export default async function TimelinePage({ params }: Props) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ) as any[];
 
-  const { data: membersData } = await supabase
-    .from("trip_members")
-    .select("*, profile:profiles(*)")
-    .eq("trip_id", tripId);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const transports: TransportWithAssignments[] = (canManageActivities
+    ? (allTransports ?? [])
+    : (allTransports ?? []).filter((t) =>
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (t.assignments as any[]).some((a: { member_id: string }) => a.member_id === membership.id)
+      )
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ) as any[];
 
   const members = (membersData ?? []) as unknown as MemberWithProfile[];
 
@@ -146,7 +165,7 @@ export default async function TimelinePage({ params }: Props) {
   const dateGroups = new Map<string, DateGroup>();
 
   function getOrCreate(key: string, sortKey: string): DateGroup {
-    if (!dateGroups.has(key)) dateGroups.set(key, { sortKey, activities: [], accomEvents: [], flights: [] });
+    if (!dateGroups.has(key)) dateGroups.set(key, { sortKey, activities: [], accomEvents: [], flights: [], transports: [] });
     return dateGroups.get(key)!;
   }
 
@@ -156,6 +175,7 @@ export default async function TimelinePage({ params }: Props) {
 
   const undated: ActivityFull[] = [];
   const undatedFlights: FlightRow[] = [];
+  const undatedTransports: TransportWithAssignments[] = [];
 
   for (const a of activities) {
     if (!a.starts_at) { undated.push(a); continue; }
@@ -180,6 +200,12 @@ export default async function TimelinePage({ params }: Props) {
     getOrCreate(fmtKey(d), f.departure_time).flights.push(f);
   }
 
+  for (const t of transports) {
+    if (!t.departs_at) { undatedTransports.push(t); continue; }
+    const d = new Date(t.departs_at);
+    getOrCreate(fmtKey(d), t.departs_at).transports.push(t);
+  }
+
   const sortedGroups = [...dateGroups.entries()].sort(([, a], [, b]) =>
     a.sortKey.localeCompare(b.sortKey)
   );
@@ -198,19 +224,15 @@ export default async function TimelinePage({ params }: Props) {
         <div className="mb-6 mt-2">
           <h1 className="text-2xl font-bold">Timeline</h1>
           {!canManageActivities && (
-            <p className="text-sm text-gray-400 mt-1">Showing your confirmed activities and assigned accommodation.</p>
+            <p className="text-sm text-gray-400 mt-1">Showing your confirmed activities and assigned items.</p>
           )}
         </div>
 
         <nav className="flex gap-2 mb-8 flex-wrap">
-          {[
-            { label: "Members", href: `/trips/${tripId}` },
-            { label: "Accommodation", href: `/trips/${tripId}/accommodations` },
-            { label: "Activities", href: `/trips/${tripId}/activities` },
-            { label: "Flights", href: `/trips/${tripId}/flights` },
-            { label: "Timeline", href: `/trips/${tripId}/timeline` },
-          ].map(({ label, href }) => (
-            <LinkButton key={href} href={href} variant={href.endsWith("timeline") ? "default" : "outline"} size="sm">{label}</LinkButton>
+          {NAV(tripId).map(({ label, href }) => (
+            <LinkButton key={href} href={href} variant={href.endsWith("timeline") ? "default" : "outline"} size="sm">
+              {label}
+            </LinkButton>
           ))}
         </nav>
 
@@ -222,6 +244,7 @@ export default async function TimelinePage({ params }: Props) {
           sortedGroups={sortedGroups as any}
           undated={undated}
           undatedFlights={undatedFlights}
+          undatedTransports={undatedTransports}
           members={members}
           currentMemberId={membership.id}
           isOrganizer={isOrganizer}

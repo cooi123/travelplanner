@@ -108,3 +108,27 @@ export interface FlightAssignment {
   member_id: string;
   member?: TripMember;
 }
+
+export interface Transport {
+  id: string;
+  trip_id: string;
+  type: string;
+  operator: string | null;
+  from_location: string | null;
+  to_location: string | null;
+  departs_at: string | null;
+  departs_timezone: string | null;
+  arrives_at: string | null;
+  arrives_timezone: string | null;
+  booking_ref: string | null;
+  notes: string | null;
+  created_at: string;
+  assignments?: TransportAssignment[];
+}
+
+export interface TransportAssignment {
+  id: string;
+  transport_id: string;
+  member_id: string;
+  member?: TripMember;
+}

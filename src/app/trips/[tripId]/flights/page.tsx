@@ -61,11 +61,12 @@ export default async function FlightsPage({ params }: Props) {
 
         <nav className="flex gap-2 mb-8 flex-wrap">
           {[
-            { label: "Members", href: `/trips/${tripId}` },
+            { label: "Members",       href: `/trips/${tripId}` },
             { label: "Accommodation", href: `/trips/${tripId}/accommodations` },
-            { label: "Activities", href: `/trips/${tripId}/activities` },
-            { label: "Flights", href: `/trips/${tripId}/flights` },
-            { label: "Timeline", href: `/trips/${tripId}/timeline` },
+            { label: "Activities",    href: `/trips/${tripId}/activities` },
+            { label: "Flights",       href: `/trips/${tripId}/flights` },
+            { label: "Transport",     href: `/trips/${tripId}/transport` },
+            { label: "Timeline",      href: `/trips/${tripId}/timeline` },
           ].map(({ label, href }) => (
             <LinkButton key={href} href={href} variant={href.endsWith("/flights") ? "default" : "outline"} size="sm">
               {label}
