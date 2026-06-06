@@ -15,13 +15,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { toast } from "sonner";
 import type { Activity, ActivityParticipant, TripMember, Profile } from "@/types";
 
-type MemberWithProfile = TripMember & {
+export type MemberWithProfile = TripMember & {
   profile: Profile | null;
   guest_name: string | null;
   guest_email: string | null;
 };
-type ParticipantFull = Omit<ActivityParticipant, "member"> & { member: MemberWithProfile };
-type ActivityFull = Omit<Activity, "participants"> & { participants: ParticipantFull[] };
+export type ParticipantFull = Omit<ActivityParticipant, "member"> & { member: MemberWithProfile };
+export type ActivityFull = Omit<Activity, "participants"> & { participants: ParticipantFull[] };
 
 interface Props {
   tripId: string;
@@ -31,11 +31,11 @@ interface Props {
   isOrganizer: boolean;
 }
 
-function memberName(m: MemberWithProfile) {
+export function memberName(m: MemberWithProfile) {
   return m.profile?.full_name ?? m.profile?.email ?? m.guest_name ?? "Unknown";
 }
 
-function memberInitials(m: MemberWithProfile) {
+export function memberInitials(m: MemberWithProfile) {
   const name = memberName(m);
   return name.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2);
 }
@@ -142,7 +142,7 @@ function TimezoneSelect({ value, onChange }: { value: string; onChange: (v: stri
 
 // ---- Edit + Assign modal ---------------------------------------------------
 
-interface ActivityModalProps {
+export interface ActivityModalProps {
   activity: ActivityFull;
   members: MemberWithProfile[];
   currentMemberId: string;
@@ -152,7 +152,7 @@ interface ActivityModalProps {
   onDelete: (id: string) => void;
 }
 
-function ActivityModal({ activity, members, currentMemberId, isOrganizer, onClose, onSaved, onDelete }: ActivityModalProps) {
+export function ActivityModal({ activity, members, currentMemberId, isOrganizer, onClose, onSaved, onDelete }: ActivityModalProps) {
   const [title, setTitle] = useState(activity.title);
   const [description, setDescription] = useState(activity.description ?? "");
   const [location, setLocation] = useState(activity.location ?? "");
