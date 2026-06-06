@@ -1,4 +1,4 @@
-export type Role = "organizer" | "participant";
+export type Role = "organizer" | "participant" | "activity_manager";
 export type ActivityStatus = "interested" | "confirmed" | "declined";
 
 export interface Profile {
@@ -81,4 +81,30 @@ export interface TripInvite {
   email: string | null;
   expires_at: string | null;
   created_at: string;
+}
+
+export interface Flight {
+  id: string;
+  trip_id: string;
+  flight_iata: string;
+  airline_name: string | null;
+  departure_airport: string | null;
+  departure_iata: string | null;
+  departure_time: string | null;
+  departure_timezone: string | null;
+  arrival_airport: string | null;
+  arrival_iata: string | null;
+  arrival_time: string | null;
+  arrival_timezone: string | null;
+  flight_status: string | null;
+  notes: string | null;
+  created_at: string;
+  assignments?: FlightAssignment[];
+}
+
+export interface FlightAssignment {
+  id: string;
+  flight_id: string;
+  member_id: string;
+  member?: TripMember;
 }

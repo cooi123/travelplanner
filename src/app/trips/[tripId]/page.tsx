@@ -33,6 +33,10 @@ export default async function TripPage({ params }: Props) {
   if (!membership) notFound();
 
   const isOrganizer = membership.role === "organizer";
+  const roleLabel =
+    membership.role === "organizer" ? "Organizer" :
+    membership.role === "activity_manager" ? "Activity manager" :
+    "Participant";
 
   return (
     <>
@@ -59,7 +63,7 @@ export default async function TripPage({ params }: Props) {
               )}
             </div>
             <Badge variant={isOrganizer ? "default" : "secondary"} className="shrink-0">
-              {isOrganizer ? "Organizer" : "Participant"}
+              {roleLabel}
             </Badge>
           </div>
         </div>
@@ -72,6 +76,7 @@ export default async function TripPage({ params }: Props) {
             { label: "Members", href: `/trips/${tripId}` },
             { label: "Accommodation", href: `/trips/${tripId}/accommodations` },
             { label: "Activities", href: `/trips/${tripId}/activities` },
+            { label: "Flights", href: `/trips/${tripId}/flights` },
             { label: "Timeline", href: `/trips/${tripId}/timeline` },
           ].map(({ label, href }) => (
             <LinkButton key={href} href={href} variant="outline" size="sm">{label}</LinkButton>

@@ -25,6 +25,7 @@ export default async function ActivitiesPage({ params }: Props) {
   if (!membership) notFound();
 
   const isOrganizer = membership.role === "organizer";
+  const canManageActivities = membership.role === "organizer" || membership.role === "activity_manager";
 
   // Fetch activities with all participants (member + profile).
   const { data: activities } = await supabase
@@ -65,6 +66,7 @@ export default async function ActivitiesPage({ params }: Props) {
             { label: "Members", href: `/trips/${tripId}` },
             { label: "Accommodation", href: `/trips/${tripId}/accommodations` },
             { label: "Activities", href: `/trips/${tripId}/activities` },
+            { label: "Flights", href: `/trips/${tripId}/flights` },
             { label: "Timeline", href: `/trips/${tripId}/timeline` },
           ].map(({ label, href }) => (
             <LinkButton key={href} href={href} variant={href.endsWith("activities") ? "default" : "outline"} size="sm">{label}</LinkButton>
@@ -80,7 +82,7 @@ export default async function ActivitiesPage({ params }: Props) {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           members={(members ?? []) as any}
           currentMemberId={membership.id}
-          isOrganizer={isOrganizer}
+          isOrganizer={canManageActivities}
         />
       </main>
     </>

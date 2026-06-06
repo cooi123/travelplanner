@@ -65,6 +65,7 @@ export default async function AccommodationsPage({ params }: Props) {
             { label: "Members", href: `/trips/${tripId}` },
             { label: "Accommodation", href: `/trips/${tripId}/accommodations` },
             { label: "Activities", href: `/trips/${tripId}/activities` },
+            { label: "Flights", href: `/trips/${tripId}/flights` },
             { label: "Timeline", href: `/trips/${tripId}/timeline` },
           ].map(({ label, href }) => (
             <LinkButton key={href} href={href} variant={href.includes("accommodations") ? "default" : "outline"} size="sm">{label}</LinkButton>

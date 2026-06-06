@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import type { TripMember } from "@/types";
+import type { TripMember, Role } from "@/types";
 
 interface Props {
   tripId: string;
@@ -104,6 +104,17 @@ export function MembersSection({ tripId, currentUserId, isOrganizer }: Props) {
     toast.success(`${guestName} added as a guest`);
   }
 
+  async function updateMemberRole(memberId: string, newRole: "participant" | "activity_manager") {
+    const supabase = createClient();
+    const { error } = await supabase
+      .from("trip_members")
+      .update({ role: newRole })
+      .eq("id", memberId);
+    if (error) { toast.error(error.message); return; }
+    setMembers((prev) => prev.map((m) => m.id === memberId ? { ...m, role: newRole } : m));
+    toast.success("Role updated");
+  }
+
   async function removeGuest(memberId: string) {
     const supabase = createClient();
     const { error } = await supabase.from("trip_members").delete().eq("id", memberId);
@@ -155,31 +166,53 @@ export function MembersSection({ tripId, currentUserId, isOrganizer }: Props) {
 
       {/* Real members */}
       <div className="grid gap-3 sm:grid-cols-2">
-        {realMembers.map((m) => (
-          <Card key={m.id} className={m.user_id === currentUserId ? "border-blue-200 bg-blue-50/30" : ""}>
-            <CardContent className="flex items-center gap-3 py-4">
-              <Avatar>
-                <AvatarFallback className="bg-blue-100 text-blue-700 text-sm">
-                  {memberInitials(m)}
-                </AvatarFallback>
-              </Avatar>
-              <div className="flex-1 min-w-0">
-                <p className="font-medium text-sm truncate">
-                  {displayName(m)}
-                  {m.user_id === currentUserId && (
-                    <span className="ml-1 text-gray-400 font-normal">(you)</span>
+        {realMembers.map((m) => {
+          const canEditRole = isOrganizer && m.role !== "organizer" && m.user_id !== currentUserId;
+          const roleBadgeLabel =
+            m.role === "organizer" ? "Organizer" :
+            m.role === "activity_manager" ? "Activity manager" :
+            "Participant";
+
+          return (
+            <Card key={m.id} className={m.user_id === currentUserId ? "border-blue-200 bg-blue-50/30" : ""}>
+              <CardContent className="flex items-center gap-3 py-4">
+                <Avatar>
+                  <AvatarFallback className="bg-blue-100 text-blue-700 text-sm">
+                    {memberInitials(m)}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium text-sm truncate">
+                    {displayName(m)}
+                    {m.user_id === currentUserId && (
+                      <span className="ml-1 text-gray-400 font-normal">(you)</span>
+                    )}
+                  </p>
+                  {m.profile?.full_name && (
+                    <p className="text-xs text-gray-400 truncate">{m.profile.email}</p>
                   )}
-                </p>
-                {m.profile?.full_name && (
-                  <p className="text-xs text-gray-400 truncate">{m.profile.email}</p>
+                </div>
+                {canEditRole ? (
+                  <select
+                    value={m.role as Role}
+                    onChange={(e) => updateMemberRole(m.id, e.target.value as "participant" | "activity_manager")}
+                    className="text-xs border border-gray-200 rounded px-2 py-1 bg-white shrink-0 cursor-pointer focus:outline-none focus:ring-1 focus:ring-gray-300"
+                  >
+                    <option value="participant">Participant</option>
+                    <option value="activity_manager">Activity manager</option>
+                  </select>
+                ) : (
+                  <Badge
+                    variant={m.role === "organizer" ? "default" : "secondary"}
+                    className={`shrink-0 ${m.role === "activity_manager" ? "bg-blue-100 text-blue-700 border-blue-200 hover:bg-blue-100" : ""}`}
+                  >
+                    {roleBadgeLabel}
+                  </Badge>
                 )}
-              </div>
-              <Badge variant={m.role === "organizer" ? "default" : "secondary"} className="shrink-0">
-                {m.role}
-              </Badge>
-            </CardContent>
-          </Card>
-        ))}
+              </CardContent>
+            </Card>
+          );
+        })}
       </div>
 
       {/* Guests */}
