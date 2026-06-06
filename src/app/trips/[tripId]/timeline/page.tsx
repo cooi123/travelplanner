@@ -49,6 +49,22 @@ type AccomRow = {
 
 type AccomEvent = { type: "checkin" | "checkout"; accom: AccomRow };
 
+type FlightRow = {
+  id: string;
+  flight_iata: string;
+  airline_name: string | null;
+  departure_airport: string | null;
+  departure_iata: string | null;
+  departure_time: string | null;
+  departure_timezone: string | null;
+  arrival_airport: string | null;
+  arrival_iata: string | null;
+  arrival_time: string | null;
+  arrival_timezone: string | null;
+  flight_status: string | null;
+  assignments: Array<{ id: string; member_id: string; member?: AnyMember | null }>;
+};
+
 // Returns true if two activities have overlapping time ranges.
 // Activities without times never trigger a parallel branch.
 function timesOverlap(a: ActivityRow, b: ActivityRow): boolean {
@@ -130,12 +146,30 @@ export default async function TimelinePage({ params }: Props) {
         a.assignments.some((x: { member_id: string }) => x.member_id === membership.id)
       );
 
+  const { data: allFlights } = await supabase
+    .from("flights")
+    .select(`
+      *,
+      assignments:flight_assignments(
+        *,
+        member:trip_members(*, profile:profiles(*))
+      )
+    `)
+    .eq("trip_id", tripId)
+    .order("departure_time", { ascending: true, nullsFirst: false });
+
+  const flights: FlightRow[] = isOrganizer
+    ? (allFlights ?? [])
+    : (allFlights ?? []).filter((f) =>
+        f.assignments.some((a: { member_id: string }) => a.member_id === membership.id)
+      );
+
   // Build unified date groups
-  type DateGroup = { sortKey: string; activities: ActivityRow[]; accomEvents: AccomEvent[] };
+  type DateGroup = { sortKey: string; activities: ActivityRow[]; accomEvents: AccomEvent[]; flights: FlightRow[] };
   const dateGroups = new Map<string, DateGroup>();
 
   function getOrCreate(key: string, sortKey: string): DateGroup {
-    if (!dateGroups.has(key)) dateGroups.set(key, { sortKey, activities: [], accomEvents: [] });
+    if (!dateGroups.has(key)) dateGroups.set(key, { sortKey, activities: [], accomEvents: [], flights: [] });
     return dateGroups.get(key)!;
   }
 
@@ -144,6 +178,7 @@ export default async function TimelinePage({ params }: Props) {
   }
 
   const undated: ActivityRow[] = [];
+  const undatedFlights: FlightRow[] = [];
 
   for (const a of activities) {
     if (!a.starts_at) { undated.push(a); continue; }
@@ -162,11 +197,17 @@ export default async function TimelinePage({ params }: Props) {
     }
   }
 
+  for (const f of flights) {
+    if (!f.departure_time) { undatedFlights.push(f); continue; }
+    const d = new Date(f.departure_time);
+    getOrCreate(fmtKey(d), f.departure_time).flights.push(f);
+  }
+
   const sortedGroups = [...dateGroups.entries()].sort(([, a], [, b]) =>
     a.sortKey.localeCompare(b.sortKey)
   );
 
-  const hasAnything = sortedGroups.length > 0 || undated.length > 0;
+  const hasAnything = sortedGroups.length > 0 || undated.length > 0 || undatedFlights.length > 0;
 
   return (
     <>
@@ -191,6 +232,7 @@ export default async function TimelinePage({ params }: Props) {
             { label: "Members", href: `/trips/${tripId}` },
             { label: "Accommodation", href: `/trips/${tripId}/accommodations` },
             { label: "Activities", href: `/trips/${tripId}/activities` },
+            { label: "Flights", href: `/trips/${tripId}/flights` },
             { label: "Timeline", href: `/trips/${tripId}/timeline` },
           ].map(({ label, href }) => (
             <LinkButton key={href} href={href} variant={href.endsWith("timeline") ? "default" : "outline"} size="sm">{label}</LinkButton>
@@ -204,7 +246,7 @@ export default async function TimelinePage({ params }: Props) {
             <p className="text-lg">Nothing on your timeline yet.</p>
             <p className="text-sm mt-1">
               {isOrganizer
-                ? "Add activities or accommodations to get started."
+                ? "Add activities, accommodations, or flights to get started."
                 : "Express interest in activities and the organizer will confirm you."}
             </p>
           </div>
@@ -264,6 +306,14 @@ export default async function TimelinePage({ params }: Props) {
                       </div>
                     ))}
 
+                    {/* Flights departing on this day */}
+                    {group.flights.map((f) => (
+                      <div key={f.id} className="relative">
+                        <div className="absolute -left-[29px] top-1 h-3.5 w-3.5 rounded-full bg-sky-500 border-2 border-white ring-2 ring-sky-500" />
+                        <FlightCard f={f} />
+                      </div>
+                    ))}
+
                     {/* Activity slots — single or parallel */}
                     {slots.map((slot, slotIdx) =>
                       slot.length === 1 ? (
@@ -279,10 +329,11 @@ export default async function TimelinePage({ params }: Props) {
               );
             })}
 
-            {undated.length > 0 && (
+            {(undated.length > 0 || undatedFlights.length > 0) && (
               <div>
                 <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-widest mb-4">Date TBD</h2>
                 <div className="space-y-3">
+                  {undatedFlights.map((f) => <FlightCard key={f.id} f={f} />)}
                   {undated.map((a) => (
                     <div key={a.id} className="bg-white border rounded-lg px-4 py-3">
                       <p className="font-medium text-gray-700">{a.title}</p>
@@ -338,6 +389,70 @@ function ActivityCard({ a, compact = false }: { a: ActivityRow; compact?: boolea
           <div className="flex flex-wrap gap-1">
             {confirmed.map((p) => p.member && (
               <span key={p.id} className="text-xs text-gray-500">{memberName(p.member)},</span>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FlightCard({ f }: { f: FlightRow }) {
+  function fmtTime(ts: string | null, tz?: string | null) {
+    if (!ts) return null;
+    return new Date(ts).toLocaleTimeString("en-US", {
+      hour: "numeric", minute: "2-digit",
+      timeZone: tz ?? undefined,
+    });
+  }
+
+  return (
+    <div className="bg-white border rounded-lg px-4 py-3 shadow-sm hover:shadow-md transition-shadow">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="font-mono font-bold text-gray-900">✈ {f.flight_iata}</span>
+            {f.flight_status && (
+              <Badge variant="outline" className="text-xs capitalize text-sky-700 border-sky-200">
+                {f.flight_status}
+              </Badge>
+            )}
+          </div>
+          {f.airline_name && <p className="text-xs text-gray-400 mt-0.5">{f.airline_name}</p>}
+          <div className="flex items-center gap-2 mt-2">
+            <div className="text-center">
+              <p className="font-semibold text-sm">{f.departure_iata ?? "—"}</p>
+              {f.departure_time && (
+                <p className="text-xs text-gray-400">{fmtTime(f.departure_time, f.departure_timezone)}</p>
+              )}
+            </div>
+            <div className="flex-1 border-t-2 border-dashed border-gray-200 mx-1" />
+            <div className="text-center">
+              <p className="font-semibold text-sm">{f.arrival_iata ?? "—"}</p>
+              {f.arrival_time && (
+                <p className="text-xs text-gray-400">{fmtTime(f.arrival_time, f.arrival_timezone)}</p>
+              )}
+            </div>
+          </div>
+        </div>
+        <Badge variant="outline" className="shrink-0 text-xs text-sky-700 border-sky-200">
+          {f.assignments.length} pax
+        </Badge>
+      </div>
+      {f.assignments.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-2 items-center">
+          <div className="flex -space-x-2">
+            {f.assignments.slice(0, 8).map((a) => a.member && (
+              <Avatar key={a.id} className="h-7 w-7 border-2 border-white">
+                <AvatarFallback className="text-xs bg-sky-100 text-sky-700">
+                  {memberInitials(a.member)}
+                </AvatarFallback>
+              </Avatar>
+            ))}
+          </div>
+          <div className="flex flex-wrap gap-1">
+            {f.assignments.map((a) => a.member && (
+              <span key={a.id} className="text-xs text-gray-500">{memberName(a.member)},</span>
             ))}
           </div>
         </div>
