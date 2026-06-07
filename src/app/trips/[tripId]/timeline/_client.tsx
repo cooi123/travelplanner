@@ -16,7 +16,6 @@ import {
 import {
   TransportModal,
   transportMeta,
-  fmtTransportTime,
   type TransportWithAssignments,
 } from "../transport/_client";
 
@@ -92,6 +91,18 @@ function anyMemberInitials(m: AnyMember): string {
   return name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2);
 }
 
+// Always display in the stored IANA timezone (UTC fallback), never browser locale.
+// Appends the short timezone abbreviation so the reader knows which zone it is.
+function fmtTzTime(ts: string | null, tz: string | null | undefined): string | null {
+  if (!ts) return null;
+  const d = new Date(ts);
+  const iana = tz || "UTC";
+  const time = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: iana });
+  const abbr = new Intl.DateTimeFormat("en-US", { timeZone: iana, timeZoneName: "short" })
+    .formatToParts(d).find((p) => p.type === "timeZoneName")?.value ?? "";
+  return abbr ? `${time} ${abbr}` : time;
+}
+
 function timesOverlap(a: ActivityFull, b: ActivityFull): boolean {
   if (!a.starts_at || !b.starts_at) return false;
   const aStart = new Date(a.starts_at).getTime();
@@ -142,8 +153,8 @@ function ActivityCard({
           <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5">
             {a.starts_at && (
               <p className="text-xs text-gray-400">
-                {new Date(a.starts_at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: a.timezone ?? undefined })}
-                {a.ends_at && " – " + new Date(a.ends_at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: a.timezone ?? undefined })}
+                {fmtTzTime(a.starts_at, a.timezone)}
+                {a.ends_at && " – " + fmtTzTime(a.ends_at, a.timezone)}
               </p>
             )}
             {a.location && <p className="text-xs text-gray-400">📍 {a.location}</p>}
@@ -185,14 +196,6 @@ function ActivityCard({
 // ---------------------------------------------------------------------------
 
 function FlightCard({ f }: { f: FlightRow }) {
-  function fmtTime(ts: string | null, tz?: string | null) {
-    if (!ts) return null;
-    return new Date(ts).toLocaleTimeString("en-US", {
-      hour: "numeric", minute: "2-digit",
-      timeZone: tz ?? undefined,
-    });
-  }
-
   return (
     <div className="bg-white border rounded-lg px-4 py-3 shadow-sm hover:shadow-md transition-shadow">
       <div className="flex items-start justify-between gap-2">
@@ -210,14 +213,14 @@ function FlightCard({ f }: { f: FlightRow }) {
             <div className="text-center">
               <p className="font-semibold text-sm">{f.departure_iata ?? "—"}</p>
               {f.departure_time && (
-                <p className="text-xs text-gray-400">{fmtTime(f.departure_time, f.departure_timezone)}</p>
+                <p className="text-xs text-gray-400">{fmtTzTime(f.departure_time, f.departure_timezone)}</p>
               )}
             </div>
             <div className="flex-1 border-t-2 border-dashed border-gray-200 mx-1" />
             <div className="text-center">
               <p className="font-semibold text-sm">{f.arrival_iata ?? "—"}</p>
               {f.arrival_time && (
-                <p className="text-xs text-gray-400">{fmtTime(f.arrival_time, f.arrival_timezone)}</p>
+                <p className="text-xs text-gray-400">{fmtTzTime(f.arrival_time, f.arrival_timezone)}</p>
               )}
             </div>
           </div>
@@ -292,12 +295,12 @@ function TransportCard({
           <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5">
             {t.departs_at && (
               <p className="text-xs text-gray-400">
-                Dep: {fmtTransportTime(t.departs_at, t.departs_timezone)}
+                Dep: {fmtTzTime(t.departs_at, t.departs_timezone)}
               </p>
             )}
             {t.arrives_at && (
               <p className="text-xs text-gray-400">
-                Arr: {fmtTransportTime(t.arrives_at, t.arrives_timezone)}
+                Arr: {fmtTzTime(t.arrives_at, t.arrives_timezone)}
               </p>
             )}
             {t.booking_ref && (
