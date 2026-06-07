@@ -132,3 +132,20 @@ export interface TransportAssignment {
   member_id: string;
   member?: TripMember;
 }
+
+export interface Suggestion {
+  id: string;
+  trip_id: string;
+  member_id: string;
+  title: string;
+  description: string | null;
+  created_at: string;
+  member?: TripMember;
+  votes?: SuggestionVote[];
+}
+
+export interface SuggestionVote {
+  id: string;
+  suggestion_id: string;
+  member_id: string;
+}

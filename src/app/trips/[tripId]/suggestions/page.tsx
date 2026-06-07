@@ -1,16 +1,26 @@
 import { redirect, notFound } from "next/navigation";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { Nav } from "@/components/nav";
-import Link from "next/link";
 import { LinkButton } from "@/components/ui/link-button";
 import { Separator } from "@/components/ui/separator";
-import { FlightsClient } from "./_client";
+import { SuggestionsClient } from "./_client";
 
 interface Props {
   params: Promise<{ tripId: string }>;
 }
 
-export default async function FlightsPage({ params }: Props) {
+const NAV = (tripId: string) => [
+  { label: "Members",       href: `/trips/${tripId}` },
+  { label: "Accommodation", href: `/trips/${tripId}/accommodations` },
+  { label: "Activities",    href: `/trips/${tripId}/activities` },
+  { label: "Flights",       href: `/trips/${tripId}/flights` },
+  { label: "Transport",     href: `/trips/${tripId}/transport` },
+  { label: "Suggestions",   href: `/trips/${tripId}/suggestions` },
+  { label: "Timeline",      href: `/trips/${tripId}/timeline` },
+];
+
+export default async function SuggestionsPage({ params }: Props) {
   const { tripId } = await params;
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -25,24 +35,16 @@ export default async function FlightsPage({ params }: Props) {
   if (!membership) notFound();
 
   const isOrganizer = membership.role === "organizer";
-  const canManageActivities = membership.role === "organizer" || membership.role === "activity_manager";
 
-  const { data: flights } = await supabase
-    .from("flights")
+  const { data: suggestions } = await supabase
+    .from("suggestions")
     .select(`
       *,
-      assignments:flight_assignments(
-        *,
-        member:trip_members(*, profile:profiles(*))
-      )
+      member:trip_members(*, profile:profiles(*)),
+      votes:suggestion_votes(*)
     `)
     .eq("trip_id", tripId)
-    .order("departure_time", { ascending: true, nullsFirst: false });
-
-  const { data: members } = await supabase
-    .from("trip_members")
-    .select("*, profile:profiles(*)")
-    .eq("trip_id", tripId);
+    .order("created_at", { ascending: false });
 
   return (
     <>
@@ -53,23 +55,21 @@ export default async function FlightsPage({ params }: Props) {
           <span>/</span>
           <Link href={`/trips/${tripId}`} className="hover:underline">{trip.name}</Link>
           <span>/</span>
-          <span>Flights</span>
+          <span>Suggestions</span>
         </div>
-        <div className="flex items-center justify-between mb-6 mt-2">
-          <h1 className="text-2xl font-bold">Flights</h1>
+        <div className="mb-6 mt-2">
+          <h1 className="text-2xl font-bold">Suggestions</h1>
+          <p className="text-sm text-gray-400 mt-1">Vote on what activities you want to do.</p>
         </div>
 
         <nav className="flex gap-2 mb-8 flex-wrap">
-          {[
-            { label: "Members",       href: `/trips/${tripId}` },
-            { label: "Accommodation", href: `/trips/${tripId}/accommodations` },
-            { label: "Activities",    href: `/trips/${tripId}/activities` },
-            { label: "Flights",       href: `/trips/${tripId}/flights` },
-            { label: "Transport",     href: `/trips/${tripId}/transport` },
-            { label: "Suggestions",   href: `/trips/${tripId}/suggestions` },
-            { label: "Timeline",      href: `/trips/${tripId}/timeline` },
-          ].map(({ label, href }) => (
-            <LinkButton key={href} href={href} variant={href.endsWith("/flights") ? "default" : "outline"} size="sm">
+          {NAV(tripId).map(({ label, href }) => (
+            <LinkButton
+              key={href}
+              href={href}
+              variant={href.endsWith("/suggestions") ? "default" : "outline"}
+              size="sm"
+            >
               {label}
             </LinkButton>
           ))}
@@ -77,14 +77,12 @@ export default async function FlightsPage({ params }: Props) {
 
         <Separator className="mb-6" />
 
-        <FlightsClient
+        <SuggestionsClient
           tripId={tripId}
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          flights={(flights ?? []) as any}
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          members={(members ?? []) as any}
+          suggestions={(suggestions ?? []) as any}
           currentMemberId={membership.id}
-          isOrganizer={canManageActivities}
+          isOrganizer={isOrganizer}
         />
       </main>
     </>

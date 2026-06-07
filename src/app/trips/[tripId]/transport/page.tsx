@@ -16,6 +16,7 @@ const NAV = (tripId: string) => [
   { label: "Activities",    href: `/trips/${tripId}/activities` },
   { label: "Flights",       href: `/trips/${tripId}/flights` },
   { label: "Transport",     href: `/trips/${tripId}/transport` },
+  { label: "Suggestions",   href: `/trips/${tripId}/suggestions` },
   { label: "Timeline",      href: `/trips/${tripId}/timeline` },
 ];
 
